@@ -1,0 +1,3 @@
+metadata_file: metadata.tsv
+genome_sizes: hg38.chrom.sizes
+output_dir: results

@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+*.python-version
+*.ipynb_checkpoints
+
+# Virtual environments
+.venv
+
+# Large files
+*.pkl
+*.npy
+*.bam.bai
+*.bam
+*.bw
+
+# Snakemake
+.snakemake
