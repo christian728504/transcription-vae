@@ -1,0 +1,137 @@
+import os
+import pandas as pd
+import numpy as np
+import pyBigWig
+from collections import defaultdict
+
+configfile: "config.yaml"
+
+METADATA = pd.read_csv(config.get('metadata_file', 'metadata.tsv'), sep='\t')
+OUTPUT_DIR = config.get('output_dir', 'results')
+
+def get_direction(row):
+    """Determine direction based on output_type and assay"""
+    output_type = row['output_type']
+    
+    if output_type == 'minus strand signal of unique reads':
+        return 'reverse'
+    elif output_type == 'plus strand signal of unique reads':
+        return 'forward'
+    elif output_type == 'signal of unique reads' and row['assay'] == 'RNA-seq':
+        return 'all'
+    return None
+
+BIGWIG_METADATA = METADATA[METADATA['file_format'] == 'bigWig'].copy()
+BIGWIG_METADATA["direction"] = BIGWIG_METADATA.apply(get_direction, axis=1)
+
+FILTERED_METADATA = BIGWIG_METADATA[
+    (BIGWIG_METADATA['direction'].notna()) & 
+    (BIGWIG_METADATA['assay'] != 'long read RNA-seq')
+].copy()
+
+main_chromosomes = config.get('main_chromosomes', ['chr' + str(i) for i in range(1, 23)])
+
+rule all:
+    input:
+        expand(
+            os.path.join(OUTPUT_DIR, 'bigwig', '{acc}.bw'),
+            zip,
+            acc=BIGWIG_METADATA['acc']
+        ),
+        # expand(
+        #     os.path.join(OUTPUT_DIR, 'log10_transformed', '{acc}.bw'),
+        #     acc=FILTERED_METADATA['acc']
+        # ),
+        # expand(
+        #     os.path.join(OUTPUT_DIR, 'aggregated', 'RNA-seq.{direction}.bw'),
+        #     direction=['forward', 'reverse', 'all']
+        # ),
+        # expand(
+        #     os.path.join(OUTPUT_DIR, 'aggregated', '{assay}.{direction}.bw'),
+        #     assay=['RAMPAGE', 'CAGE', 'PRO-Cap', 'Bru-seq', 'BruUV-seq', 'BruChase-seq'],
+        #     direction=['forward', 'reverse']
+        # )
+
+rule download_bigwig:
+    output:
+        bw = os.path.join(OUTPUT_DIR, 'bigwig', '{acc}.bw')
+    params:
+        url = lambda wildcards: BIGWIG_METADATA[BIGWIG_METADATA['acc'] == wildcards.acc]['url'].iloc[0]
+    shell:
+        """
+        wget -O {output.bw} "{params.url}"
+        """
+
+rule log10_transform_bigwig:
+    input:
+        bw = os.path.join(OUTPUT_DIR, 'bigwig', '{acc}.bw')
+    output:
+        transformed_bw = os.path.join(OUTPUT_DIR, 'log10_transformed', '{acc}.bw')
+    run:
+        bw_in = pyBigWig.open(input.bw)
+        bw_out = pyBigWig.open(output.transformed_bw, 'w')
+
+        print(f'Transforming {input.bw} to {output.transformed_bw}')
+
+        chrom_sizes = dict(bw_in.chroms().items())
+        bw_out.addHeader([(chrom, size) for chrom, size in chrom_sizes.items()])
+
+        for chrom, size in chrom_sizes.items():
+            if chrom in main_chromosomes:
+                values = bw_in.values(chrom, 0, size)
+                values = np.nan_to_num(values, nan=0)
+                transformed_values = np.log10(np.array(values) + 1)
+                bw_out.addEntries(chrom, 0, values=transformed_values.tolist(), span=1, step=1)
+
+        bw_in.close()
+        bw_out.close()
+
+rule aggregate_bigwig_by_assay_direction:
+    input:
+        bw_files = lambda wildcards: [
+            os.path.join(OUTPUT_DIR, 'log10_transformed', f"{acc}.bw")
+            for acc in FILTERED_METADATA[
+                (FILTERED_METADATA['assay'] == wildcards.assay) & 
+                (FILTERED_METADATA['direction'] == wildcards.direction)
+            ]['acc']
+        ]
+    output:
+        aggregated_bw = os.path.join(OUTPUT_DIR, 'aggregated', '{assay}.{direction}.bw')
+    run:
+        bw_files = input.bw_files
+        
+        if bw_files:
+            print(f'Aggregating {len(bw_files)} files for {wildcards.assay} - {wildcards.direction}')
+        else:
+            raise ValueError(f"No input files found for {wildcards.assay} - {wildcards.direction}")
+        
+        first_bw = pyBigWig.open(bw_files[0])
+        chrom_sizes = dict(first_bw.chroms().items())
+        first_bw.close()
+        
+        chr_values = defaultdict(list)
+        file_count = len(bw_files)
+
+        for bw_file in bw_files:
+            bw = pyBigWig.open(bw_file)
+            for chrom, size in chrom_sizes.items():
+                if chrom in main_chromosomes and chrom in bw.chroms():
+                    values = bw.values(chrom, 0, size)
+                    values = np.nan_to_num(values, nan=0)
+                    if len(chr_values[chrom]) == 0:
+                        chr_values[chrom] = np.zeros(size)
+                    chr_values[chrom][:len(values)] += np.array(values)
+            
+            bw.close()
+        
+        for chrom in chr_values:
+            chr_values[chrom] = chr_values[chrom] / file_count
+
+        bw_out = pyBigWig.open(output.aggregated_bw, 'w')
+        bw_out.addHeader([(chrom, size) for chrom, size in chrom_sizes.items() if chrom in chr_values])
+        
+        for chrom, values in chr_values.items():
+            if chrom in main_chromosomes:
+                bw_out.addEntries(chrom, 0, values=values.tolist(), span=1, step=1)
+        
+        bw_out.close()

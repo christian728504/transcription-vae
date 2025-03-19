@@ -1,0 +1,145 @@
+import os
+import pandas as pd
+import numpy as np
+import pyBigWig
+from collections import defaultdict
+
+configfile: "config.yaml"
+
+METADATA = pd.read_csv(config.get('metadata_file', 'metadata.tsv'), sep='\t')
+OUTPUT_DIR = config.get('output_dir', 'results')
+
+BAM_METADATA = METADATA[
+    (METADATA['assay'] == 'long read RNA-seq') & 
+    (METADATA['file_format'] == 'bam')
+].copy()
+
+main_chromosomes = config.get('main_chromosomes', ['chr' + str(i) for i in range(1, 23)])
+
+rule all:
+    input:
+        expand(
+            os.path.join(OUTPUT_DIR, 'bam', '{acc}.sorted.bam'),
+            acc=BAM_METADATA['acc']
+        ),
+        expand(
+            os.path.join(OUTPUT_DIR, 'bedgraph', '{acc}.{direction}.bg'),
+            acc=BAM_METADATA['acc'],
+            direction=['forward', 'reverse']
+        ),
+        expand(
+            os.path.join(OUTPUT_DIR, 'bigwig', '{acc}.{direction}.bw'),
+            acc=BAM_METADATA['acc'],
+            direction=['forward', 'reverse']
+        ),
+        expand(
+            os.path.join(OUTPUT_DIR, 'log10_transformed', '{acc}.{direction}.bw'),
+            acc=BAM_METADATA['acc'],
+            direction=['forward', 'reverse']
+        ),
+        expand(
+            os.path.join(OUTPUT_DIR, 'aggregated', 'long read RNA-seq.{direction}.bw'),
+            direction=['forward', 'reverse']
+        )
+
+rule process_bam:
+    output:
+        bam = os.path.join(OUTPUT_DIR, 'bam', '{acc}.sorted.bam'),
+        bai = os.path.join(OUTPUT_DIR, 'bam', '{acc}.sorted.bam.bai')
+    params:
+        url = lambda wildcards: BAM_METADATA[BAM_METADATA['acc'] == wildcards.acc]['url'].iloc[0]
+    shell:
+        """
+        wget -O - "{params.url}" | samtools sort -o {output.bam}
+        samtools index {output.bam}
+        """
+
+rule cut_sites:
+    input:
+        bam = os.path.join(OUTPUT_DIR, 'bam', '{acc}.sorted.bam'),
+        genome_sizes = config['genome_sizes']
+    params:
+        strand = lambda wildcards: '+' if wildcards.direction == 'forward' else '-'
+    output:
+        bg = os.path.join(OUTPUT_DIR, 'bedgraph', '{acc}.{direction}.bg')
+    shell:
+        """
+        bedtools genomecov -ibam {input.bam} -5 -strand {params.strand} -bga | 
+        awk 'NR==FNR {{allowed[$1]=1; next}} ($1 in allowed)' {input.genome_sizes} - | 
+        bedSort /dev/stdin {output.bg}
+        """
+
+rule bedgraph_to_bigwig:
+    input:
+        bg = os.path.join(OUTPUT_DIR, 'bedgraph', '{acc}.{direction}.bg'),
+        genome_sizes = config['genome_sizes']
+    output:
+        bw = os.path.join(OUTPUT_DIR, 'bigwig', '{acc}.{direction}.bw')
+    shell:
+        """
+        bedGraphToBigWig {input.bg} {input.genome_sizes} {output.bw}
+        """
+
+rule log10_transform_bigwig:
+    input:
+        bw = os.path.join(OUTPUT_DIR, 'bigwig', '{acc}.{direction}.bw')
+    output:
+        transformed_bw = os.path.join(OUTPUT_DIR, 'log10_transformed', '{acc}.{direction}.bw')
+    run:
+        bw_in = pyBigWig.open(input.bw)
+        bw_out = pyBigWig.open(output.transformed_bw, 'w')
+        chrom_sizes = dict(bw_in.chroms().items())
+        bw_out.addHeader([(chrom, size) for chrom, size in chrom_sizes.items()])
+        
+        for chrom, size in chrom_sizes.items():
+            if chrom in main_chromosomes:
+                values = bw_in.values(chrom, 0, size)
+                values = np.nan_to_num(values, nan=0)
+                transformed_values = np.log10(np.array(values) + 1)
+                bw_out.addEntries(chrom, 0, values=transformed_values.tolist(), span=1, step=1)
+        
+        bw_in.close()
+        bw_out.close()
+
+rule aggregate_long_read_rnaseq:
+    input:
+        bw_files = lambda wildcards: [
+            os.path.join(OUTPUT_DIR, 'log10_transformed', f"{acc}.{wildcards.direction}.bw")
+            for acc in BAM_METADATA['acc']
+        ]
+    output:
+        aggregated_bw = os.path.join(OUTPUT_DIR, 'aggregated', 'long read RNA-seq.{direction}.bw')
+    run:
+        bw_files = input.bw_files
+        if not bw_files:
+            raise ValueError(f"No input files found for long read RNA-seq - {wildcards.direction}")
+        
+        first_bw = pyBigWig.open(bw_files[0])
+        chrom_sizes = dict(first_bw.chroms().items())
+        first_bw.close()
+        
+        chr_values = defaultdict(list)
+        file_count = len(bw_files)
+        
+        for bw_file in bw_files:
+            bw = pyBigWig.open(bw_file)
+            for chrom, size in chrom_sizes.items():
+                if chrom in main_chromosomes and chrom in bw.chroms():
+                    values = bw.values(chrom, 0, size)
+                    values = np.nan_to_num(values, nan=0)
+                    if len(chr_values[chrom]) == 0:
+                        chr_values[chrom] = np.zeros(size)
+                    chr_values[chrom][:len(values)] += np.array(values)
+            bw.close()
+        
+        for chrom in chr_values:
+            chr_values[chrom] = chr_values[chrom] / file_count
+        
+        bw_out = pyBigWig.open(output.aggregated_bw, 'w')
+        bw_out.addHeader([(chrom, size) for chrom, size in chrom_sizes.items() if chrom in chr_values])
+        
+        for chrom, values in chr_values.items():
+            if chrom in main_chromosomes:
+                bw_out.addEntries(chrom, 0, values=values.tolist(), span=1, step=1)
+        
+        bw_out.close()

@@ -144,7 +144,6 @@ class EncodeMetadataParser:
             target = None
             
         # Determine strand specificity from replicates
-        strand_specificity = "unstranded"  # Default
         replicates = data.get("replicates", [])
         for rep in replicates:
             if "library" in rep and "strand_specificity" in rep["library"]:
@@ -197,7 +196,7 @@ class EncodeMetadataParser:
                     output_type == "minus strand signal of unique reads"
                 ):
                     is_valid_output_type = True
-                    
+                
                 if is_valid_output_type:
                     biorep = file_info.get('biological_replicates', "")[0]
                     url = file_info.get('cloud_metadata', {}).get('url', '')
