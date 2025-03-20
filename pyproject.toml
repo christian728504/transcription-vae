@@ -26,6 +26,7 @@ dependencies = [
     "pybigwig>=0.3.24",
     "scikit-learn>=1.6.1",
     "scipy>=1.15.2",
+    "seaborn>=0.13.2",
     "snakemake>=7.32.4",
     "swifter>=1.4.0",
     "sympy>=1.13.3",

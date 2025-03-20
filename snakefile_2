@@ -95,6 +95,7 @@ rule log10_transform_bigwig:
             if chrom in main_chromosomes:
                 values = bw_in.values(chrom, 0, size)
                 values = np.nan_to_num(values, nan=0)
+                values = np.absolute(values)
                 transformed_values = np.log10(np.array(values) + 1)
                 bw_out.addEntries(chrom, 0, values=transformed_values.tolist(), span=1, step=1)
         
@@ -126,7 +127,6 @@ rule aggregate_long_read_rnaseq:
             for chrom, size in chrom_sizes.items():
                 if chrom in main_chromosomes and chrom in bw.chroms():
                     values = bw.values(chrom, 0, size)
-                    values = np.nan_to_num(values, nan=0)
                     if len(chr_values[chrom]) == 0:
                         chr_values[chrom] = np.zeros(size)
                     chr_values[chrom][:len(values)] += np.array(values)

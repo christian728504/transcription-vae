@@ -1,0 +1,210 @@
+BruChase-seq.forward.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 825,757,405
+primaryIndexSize: 4,383,064
+zoomLevels: 10
+chromCount: 22
+basesCovered: 614,838,660
+mean: 1.482735
+min: 0.304845
+max: 6.124700
+std: 0.940658
+
+BruChase-seq.reverse.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 799,398,398
+primaryIndexSize: 4,243,788
+zoomLevels: 10
+chromCount: 22
+basesCovered: 595,249,793
+mean: 1.478297
+min: 0.304845
+max: 6.191870
+std: 0.943779
+
+Bru-seq.forward.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 977,761,938
+primaryIndexSize: 5,171,328
+zoomLevels: 10
+chromCount: 22
+basesCovered: 605,382,810
+mean: 1.576393
+min: 0.288950
+max: 5.906650
+std: 0.964896
+
+Bru-seq.reverse.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 943,170,818
+primaryIndexSize: 4,990,472
+zoomLevels: 10
+chromCount: 22
+basesCovered: 584,462,431
+mean: 1.571350
+min: 0.288950
+max: 6.014380
+std: 0.968767
+
+BruUV-seq.forward.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 394,255,088
+primaryIndexSize: 2,329,668
+zoomLevels: 10
+chromCount: 22
+basesCovered: 479,917,740
+mean: 1.697846
+min: 0.616175
+max: 6.129650
+std: 0.808308
+
+BruUV-seq.reverse.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 384,070,327
+primaryIndexSize: 2,271,464
+zoomLevels: 10
+chromCount: 22
+basesCovered: 463,925,669
+mean: 1.702702
+min: 0.616175
+max: 6.250100
+std: 0.809530
+
+CAGE.forward.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 20,027,868
+primaryIndexSize: 112,368
+zoomLevels: 10
+chromCount: 22
+basesCovered: 3,387,711
+mean: 0.020923
+min: 0.004253
+max: 3.385150
+std: 0.080247
+
+CAGE.reverse.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 19,651,918
+primaryIndexSize: 111,856
+zoomLevels: 10
+chromCount: 22
+basesCovered: 3,322,007
+mean: 0.020997
+min: 0.004253
+max: 3.388000
+std: 0.080065
+
+PRO-cap.forward.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 125,592,143
+primaryIndexSize: 890,940
+zoomLevels: 10
+chromCount: 22
+basesCovered: 30,556,214
+mean: 0.024852
+min: 0.015051
+max: 2.934260
+std: 0.036203
+
+PRO-cap.reverse.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 122,691,378
+primaryIndexSize: 873,444
+zoomLevels: 10
+chromCount: 22
+basesCovered: 29,835,230
+mean: 0.024846
+min: 0.015051
+max: 2.932210
+std: 0.036124
+
+RAMPAGE.forward.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 2,960,483
+primaryIndexSize: 22,468
+zoomLevels: 10
+chromCount: 22
+basesCovered: 506,490
+mean: 0.037541
+min: 0.004757
+max: 3.919210
+std: 0.118377
+
+RAMPAGE.reverse.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 2,951,909
+primaryIndexSize: 22,476
+zoomLevels: 10
+chromCount: 22
+basesCovered: 504,997
+mean: 0.036949
+min: 0.004757
+max: 3.362620
+std: 0.115707
+
+RNA-seq.all.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 1,058,444,346
+primaryIndexSize: 5,343,580
+zoomLevels: 10
+chromCount: 22
+basesCovered: 1,070,236,266
+mean: 0.017699
+min: 0.000024
+max: 3.365230
+std: 0.091716
+
+RNA-seq.forward.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 1,681,788,025
+primaryIndexSize: 8,600,252
+zoomLevels: 10
+chromCount: 22
+basesCovered: 736,377,987
+mean: 0.011938
+min: 0.000041
+max: 3.745340
+std: 0.041336
+
+RNA-seq.reverse.bw
+version: 4
+isCompressed: yes
+isSwapped: 0
+primaryDataSize: 1,620,311,067
+primaryIndexSize: 8,282,208
+zoomLevels: 10
+chromCount: 22
+basesCovered: 716,126,252
+mean: 0.012001
+min: 0.000041
+max: 3.416040
+std: 0.042058
+
