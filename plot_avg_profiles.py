@@ -9,7 +9,9 @@ import pybigtools
 from gtfparse import read_gtf
 import pickle
 from multiprocessing import Pool
+from sklearn.decomposition import PCA
 from scipy.stats import pearsonr
+
 
 print('Imported dependencies successfully!')
 
@@ -83,7 +85,13 @@ def build_signal_matrix(ccre_df, bigwig_files, window_size=2000):
         for i, signals in tqdm(pool.imap(process_single_assay, args_list), total=num_assays):
             signal_matrix[:, i, :] = signals
     
-    return signal_matrix
+    lengths = ccre_df.end - ccre_df.start
+    normalized_lengths = (lengths - lengths.min()) / (lengths.max() - lengths.min())
+    
+    flattened_matrix = signal_matrix.reshape(num_ccres, -1)
+    final_matrix = np.column_stack([flattened_matrix, normalized_lengths])
+    
+    return final_matrix
 
 def plot_average_profiles(signal_matrix, ccre_df, assay_names, output_dir="average_profiles"):
     os.makedirs(output_dir, exist_ok=True)
@@ -118,104 +126,43 @@ def plot_average_profiles(signal_matrix, ccre_df, assay_names, output_dir="avera
         plt.savefig(f"{output_dir}/{assay_name}_profile.png", dpi=300)
         plt.close()
 
-def run_umap_visualization(signal_matrix, ccre_df, assay_names, output_dir="umap_plots", metric=None, color_by='ccre', load_from_file=False):
+def run_umap_visualization(signal_matrix, ccre_df, assay_names, output_dir="umap_plots", metric=None, load_from_file=False):
     if load_from_file:
         with open('embedding.pkl', 'rb') as f:
             embedding = pickle.load(f)
     else:
-        print(f'Signal matrix shape: {signal_matrix.shape}')
-        os.makedirs(output_dir, exist_ok=True)
-        num_samples = signal_matrix.shape[0]
-        signal_2d = signal_matrix.reshape(num_samples, -1)
-        print(f'Flattened signal matrix shape: {signal_2d.shape}')
+        pca = PCA(n_components=300)
+        signal_pca = pca.fit_transform(signal_matrix)
+        print(f'PCA reduced shape: {signal_pca.shape}')
+        
         reducer = umap.UMAP(n_neighbors=30, min_dist=0.1, verbose=True, metric=metric)
-        embedding = reducer.fit_transform(signal_2d)
+        embedding = reducer.fit_transform(signal_pca)
         with open('embedding.pkl', 'wb') as f:
             pickle.dump(embedding, f)
 
-    if color_by == 'strand':
-        strands = ccre_df['strand'].astype(str)
-        color_map = {
-            '+': '#FF4B4B',
-            '-': '#4B4BFF',
-            'nan': '#CCCCCC'}
-        colors = [color_map[strand] for strand in strands]
-        plt.figure(figsize=(10, 8))
-        plt.scatter(embedding[:, 0], embedding[:, 1], c=colors, alpha=0.25, s=2)
-        legend_elements = [
-            Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map['+'], 
-                markersize=10, label='+ strand'),
-            Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map['-'], 
-                markersize=10, label='- strand'),
-            Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map['nan'], 
-                markersize=10, label='Unknown')]
-        plt.legend(handles=legend_elements)
-        plt.title('UMAP of Genomic Signals')
-        plt.xlabel('UMAP 1')
-        plt.ylabel('UMAP 2')
-        plt.savefig(f"{output_dir}/umap_strand_{metric}.png", dpi=300)
-
-    elif color_by == 'ccre':
-        ccre_types = ccre_df['cCRE_type'].values
-        color_map = {'PLS' : '#FF0000', 
-                'pELS' : '#FFA700', 
-                'dELS' : '#FFCD00'}
-        colors = [color_map.get(ctype, 'gray') for ctype in ccre_types]
-        plt.figure(figsize=(10, 8))
-        plt.scatter(embedding[:, 0], embedding[:, 1], c=colors, alpha=0.25, s=2)
-        unique_types = np.unique(ccre_types)
-        legend_elements = [Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map.get(ctype, 'gray'), 
-                                markersize=10, label=ctype) for ctype in unique_types]
-        plt.legend(handles=legend_elements)
-        plt.title('UMAP of Genomic Signals')
-        plt.xlabel('UMAP 1')
-        plt.ylabel('UMAP 2')
-        plt.savefig(f"{output_dir}/umap_ccre_{metric}.png", dpi=300)
-
-    elif color_by == 'similarity':
-        ccre_types = ccre_df['cCRE_type'].values
-        unique_types = np.unique(ccre_types)
-
-        for i, assay_name in enumerate(assay_names):
-            assay_signals = signal_matrix[:, i, :]
-
-            type_avg_profiles = {}
-            for ctype in unique_types:
-                type_indices = np.where(ccre_types == ctype)[0]
-                type_avg_profiles[ctype] = np.mean(assay_signals[type_indices], axis=0)
-            
-            similarity_scores = []
-            for j, ctype in enumerate(ccre_types):
-                region_signal = assay_signals[j]
-                avg_profile = type_avg_profiles.get(ctype, np.zeros_like(region_signal))
-
-                epsilon = 1e-10
-                dot_product = np.dot(region_signal, avg_profile)
-                norm_region = np.linalg.norm(region_signal) + epsilon
-                norm_avg = np.linalg.norm(avg_profile) + epsilon
-                
-                similarity = dot_product / (norm_region * norm_avg)
-                similarity_scores.append(similarity)
-
-            plt.figure(figsize=(12, 10))
-            scatter = plt.scatter(embedding[:, 0], embedding[:, 1], 
-                                c=similarity_scores, cmap='coolwarm', 
-                                alpha=0.5, s=3, vmin=-1, vmax=1)
-
-            plt.colorbar(scatter, label="Similarity to type-specific average profile")
-            plt.title(f'UMAP of Genomic Signals - {assay_name}\n(Colored by Type-Specific Profile Similarity)')
-            plt.xlabel('UMAP 1')
-            plt.ylabel('UMAP 2')
-            plt.savefig(f"{output_dir}/umap_similarity_{assay_name}_{metric}.png", dpi=300)
-    
+    ccre_types = ccre_df['cCRE_type'].values
+    color_map = {'PLS' : '#FF0000', 
+            'pELS' : '#FFA700', 
+            'dELS' : '#FFCD00'}
+    colors = [color_map.get(ctype, 'gray') for ctype in ccre_types]
+    plt.figure(figsize=(10, 8))
+    plt.scatter(embedding[:, 0], embedding[:, 1], c=colors, alpha=0.25, s=2)
+    unique_types = np.unique(ccre_types)
+    legend_elements = [Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map.get(ctype, 'gray'), 
+                            markersize=10, label=ctype) for ctype in unique_types]
+    plt.legend(handles=legend_elements)
+    plt.title('UMAP of Genomic Signals')
+    plt.xlabel('UMAP 1')
+    plt.ylabel('UMAP 2')
+    plt.savefig(f"{output_dir}/umap_ccre_{metric}_3.png", dpi=300)
     plt.close()
 
 def main():
     ccre_df = process_ccre_data()
     bigwig_files, assay_names = find_bigwig_files()
-    signal_matrix = build_signal_matrix(ccre_df, bigwig_files)
-    # plot_average_profiles(signal_matrix, ccre_df, assay_names)
-    run_umap_visualization(signal_matrix, ccre_df, assay_names, color_by='similarity', metric='cosine', load_from_file=True)
+    final_matrix = build_signal_matrix(ccre_df, bigwig_files)
+    # plot_average_profiles(final_matrix, ccre_df, assay_names)
+    run_umap_visualization(final_matrix, ccre_df, assay_names, metric='cosine')
 
 if __name__ == "__main__":
     main()
