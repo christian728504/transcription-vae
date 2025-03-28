@@ -11,13 +11,14 @@ import pickle
 from multiprocessing import Pool
 from sklearn.decomposition import PCA
 from scipy.stats import pearsonr
+from sklearn.feature_selection import VarianceThreshold
 
 
 print('Imported dependencies successfully!')
 
 def process_ccre_data(cell_type_specific_ccres="/data/projects/encode/Registry/V4/GRCh38/Cell-Type-Specific/Individual-Files/ENCFF414OGC_ENCFF806YEZ_ENCFF849TDM_ENCFF736UDR.bed",
                      pls_gene_list="/data/projects/encode/Registry/V4/GRCh38/PLS-Gene-List.txt",
-                     gencode_gtf="/data/common/genome/gencode.v47.basic.annotation.gtf",
+                     gencode_gtf="/data/common/genome/gencode.v40.basic.annotation.gtf",
                      output_file="ccre_df.tsv"):
     """Process K562-specific cCREs, filtering for relevant types."""
     main_chromosomes = [f"chr{i}" for i in range(1, 23)]
@@ -74,26 +75,26 @@ def process_single_assay(args):
     bw.close()
     return (i, signals)
 
-def build_signal_matrix(ccre_df, bigwig_files, window_size=2000):
+def build_matrix(ccre_df, bigwig_files, window_size=2000):
     num_ccres = len(ccre_df)
     num_assays = len(bigwig_files)
-    signal_matrix = np.zeros((num_ccres, num_assays, window_size), dtype=np.float32)
+    matrix = np.zeros((num_ccres, num_assays, window_size), dtype=np.float32)
     
     args_list = [(bigwig_files[i], i, ccre_df, window_size) for i in range(num_assays)]
     
     with Pool(processes=os.cpu_count()) as pool:
         for i, signals in tqdm(pool.imap(process_single_assay, args_list), total=num_assays):
-            signal_matrix[:, i, :] = signals
+            matrix[:, i, :] = signals
     
     lengths = ccre_df.end - ccre_df.start
     normalized_lengths = (lengths - lengths.min()) / (lengths.max() - lengths.min())
     
-    flattened_matrix = signal_matrix.reshape(num_ccres, -1)
+    flattened_matrix = matrix.reshape(num_ccres, -1)
     final_matrix = np.column_stack([flattened_matrix, normalized_lengths])
     
     return final_matrix
 
-def plot_average_profiles(signal_matrix, ccre_df, assay_names, output_dir="average_profiles"):
+def plot_average_profiles(matrix, ccre_df, assay_names, output_dir="average_profiles"):
     os.makedirs(output_dir, exist_ok=True)
     
     ccre_types = ccre_df['cCRE_type'].values
@@ -102,7 +103,7 @@ def plot_average_profiles(signal_matrix, ccre_df, assay_names, output_dir="avera
                'pELS' : '#FFA700', 
                'dELS' : '#FFCD00'}
     
-    window_size = signal_matrix.shape[2]
+    window_size = matrix.shape[2]
     x_coords = np.arange(-window_size//2, window_size//2)
     
     for i, assay_name in enumerate(assay_names):
@@ -110,7 +111,7 @@ def plot_average_profiles(signal_matrix, ccre_df, assay_names, output_dir="avera
         
         for ctype in unique_types:
             type_indices = np.where(ccre_types == ctype)[0]
-            avg_profile = np.nanmean(signal_matrix[type_indices, i, :], axis=0)
+            avg_profile = np.nanmean(matrix[type_indices, i, :], axis=0)
             
             plt.plot(x_coords, avg_profile, label=f"{ctype} (n={len(type_indices)})", 
                      color=colors.get(ctype, 'gray'), linewidth=2)
@@ -126,17 +127,13 @@ def plot_average_profiles(signal_matrix, ccre_df, assay_names, output_dir="avera
         plt.savefig(f"{output_dir}/{assay_name}_profile.png", dpi=300)
         plt.close()
 
-def run_umap_visualization(signal_matrix, ccre_df, assay_names, output_dir="umap_plots", metric=None, load_from_file=False):
+def run_umap_visualization(matrix, ccre_df, assay_names, output_dir="umap_plots", metric=None, load_from_file=False):
     if load_from_file:
         with open('embedding.pkl', 'rb') as f:
             embedding = pickle.load(f)
     else:
-        pca = PCA(n_components=300)
-        signal_pca = pca.fit_transform(signal_matrix)
-        print(f'PCA reduced shape: {signal_pca.shape}')
-        
         reducer = umap.UMAP(n_neighbors=30, min_dist=0.1, verbose=True, metric=metric)
-        embedding = reducer.fit_transform(signal_pca)
+        embedding = reducer.fit_transform(matrix)
         with open('embedding.pkl', 'wb') as f:
             pickle.dump(embedding, f)
 
@@ -160,7 +157,7 @@ def run_umap_visualization(signal_matrix, ccre_df, assay_names, output_dir="umap
 def main():
     ccre_df = process_ccre_data()
     bigwig_files, assay_names = find_bigwig_files()
-    final_matrix = build_signal_matrix(ccre_df, bigwig_files)
+    final_matrix = build_matrix(ccre_df, bigwig_files)
     # plot_average_profiles(final_matrix, ccre_df, assay_names)
     run_umap_visualization(final_matrix, ccre_df, assay_names, metric='cosine')
 
